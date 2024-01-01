@@ -1,0 +1,118 @@
+services:
+
+  app:
+    build: ./app
+    container_name: python_app
+
+  kafka1:
+    image: confluentinc/cp-kafka:7.2.1
+    container_name: kafka1
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT 
+      KAFKA_LISTENERS: PLAINTEXT://kafka1:9092,CONTROLLER://kafka1:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka1:9093,2@kafka2:9093,3@kafka3:9093'
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - ./kafka/run_workaround.sh:/tmp/run_workaround.sh
+    command: "bash -c '/tmp/run_workaround.sh && /etc/confluent/docker/run'"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server=kafka1:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+
+  kafka2:
+    image: confluentinc/cp-kafka:7.2.1
+    container_name: kafka2
+    environment:
+      KAFKA_NODE_ID: 2
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://kafka2:9092,CONTROLLER://kafka2:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka2:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka1:9093,2@kafka2:9093,3@kafka3:9093'
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+    volumes:
+      - ./kafka/run_workaround.sh:/tmp/run_workaround.sh
+    command: "bash -c '/tmp/run_workaround.sh && /etc/confluent/docker/run'"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server=kafka2:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  kafka3:
+    image: confluentinc/cp-kafka:7.2.1
+    container_name: kafka3
+    environment:
+      KAFKA_NODE_ID: 3
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://kafka3:9092,CONTROLLER://kafka3:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka3:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka1:9093,2@kafka2:9093,3@kafka3:9093'
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+    volumes:
+      - ./kafka/run_workaround.sh:/tmp/run_workaround.sh
+    command: "bash -c '/tmp/run_workaround.sh && /etc/confluent/docker/run'"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server=kafka3:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+#Ici nous définissons un service nous permettant d'avoir une interface graphique pour kafka
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8888:8080"  # Port pour accéder à Kafka UI
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "local"  # Nom du cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka1:9092,kafka2:9092,kafka3:9092"  # Brokers Kafka
+    depends_on:
+      - kafka1
+      - kafka2
+      - kafka3
+
+  telegraf:
+    image: telegraf:1.19
+    volumes:
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:rw
+    env_file:
+      - ./telegraf/.env
+      - ./influxdb/.env
+
+  influxdb:
+    image: influxdb:2.1.1
+    volumes:
+      - ./influxdb/entrypoint.sh:/docker-entrypoint-initdb.d/entrypoint.sh:ro
+      - influxdb:/var/lib/influxdb2:rw
+    env_file:
+      - ./influxdb/.env
+    entrypoint: ["./entrypoint.sh"]
+    restart: on-failure:10
+    ports:
+      - 8086:8086
+
+  grafana:
+    image: grafana/grafana-oss:8.4.3
+    env_file:
+      - ./grafana/.env
+    volumes:
+      - grafana-storage:/var/lib/grafana:rw
+    depends_on:
+      - influxdb
+    ports:
+      - ${GRAFANA_PORT}:3000
+
+volumes:
+  influxdb:
+  grafana-storage:
+
+  
